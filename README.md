@@ -4,7 +4,7 @@ Reimplementing "Human-Level Control Through Deep Reinforcement Learning" in Tens
 
 This may be the simplest implementation of DQN to play Atari Games.
 
-The pretrained network would release soon! 
+The pretrained network would release soon!
 
 ## Prerequsite
 
