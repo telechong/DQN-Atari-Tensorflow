@@ -31,6 +31,7 @@ class BrainDQN:
         self._timestep = 0
         self._prev_timestep = 0
         self._prev_timestamp = time.clock()
+
         self._fps = tf.Variable(initial_value=0.0, dtype=tf.float32, name='frames_per_second')
         self._meta_state = tf.Variable(initial_value=0, dtype=tf.uint8, name='meta_state')  # (0-observe, 1-explore, 2-train)
         self._loss_function = tf.Variable(initial_value=0.0, dtype=tf.float32, name='loss')
@@ -66,22 +67,23 @@ class BrainDQN:
         self._w_fc_2_t, \
         self._b_fc_2_t = self._create_q_network()
 
-        self._copy_target_qnetwork_operation = [self._w_conv_1_t.assign(self._w_conv1),
-                                                self._b_conv_1_t.assign(self._b_conv_1),
-                                                self._w_conv_2_t.assign(self._w_conv_2),
-                                                self._b_conv_2_t.assign(self._b_conv2),
-                                                self._w_conv_3_t.assign(self._w_conv_3),
-                                                self._b_conv_3_t.assign(self._b_conv3),
-                                                self._w_fc_1_t.assign(self._w_fc_1),
-                                                self._b_fc_1_t.assign(self._b_fc1),
-                                                self._w_fc_2_t.assign(self._w_fc_2),
-                                                self._b_fc_2_t.assign(self._b_fc2)]
-
-        self._action_input = tf.placeholder("float", [None, self._actions])
-        self._y_input = tf.placeholder("float", [None])
-        q_action = tf.reduce_sum(tf.mul(self._qvalue, self._action_input), reduction_indices=1)
-        self._cost = tf.reduce_mean(tf.square(self._y_input - q_action), name='loss_function')
-        self._train_step = tf.train.RMSPropOptimizer(0.00025, 0.99, 0.0, 1e-6).minimize(self._cost)
+        with tf.name_scope('copy_target_qnetwork'):
+            self._copy_target_qnetwork_operation = [self._w_conv_1_t.assign(self._w_conv1),
+                                                    self._b_conv_1_t.assign(self._b_conv_1),
+                                                    self._w_conv_2_t.assign(self._w_conv_2),
+                                                    self._b_conv_2_t.assign(self._b_conv2),
+                                                    self._w_conv_3_t.assign(self._w_conv_3),
+                                                    self._b_conv_3_t.assign(self._b_conv3),
+                                                    self._w_fc_1_t.assign(self._w_fc_1),
+                                                    self._b_fc_1_t.assign(self._b_fc1),
+                                                    self._w_fc_2_t.assign(self._w_fc_2),
+                                                    self._b_fc_2_t.assign(self._b_fc2)]
+        with tf.name_scope('train_qnetwork'):
+            self._action_input = tf.placeholder("float", [None, self._actions])
+            self._y_input = tf.placeholder("float", [None])
+            q_action = tf.reduce_sum(tf.mul(self._qvalue, self._action_input), reduction_indices=1, name='q_action')
+            self._cost = tf.reduce_mean(tf.square(self._y_input - q_action), name='loss_function')
+            self._train_step = tf.train.RMSPropOptimizer(0.00025, 0.99, 0.0, 1e-6).minimize(self._cost)
 
         self._session = tf.InteractiveSession()
 
@@ -144,7 +146,6 @@ class BrainDQN:
         # change episilon
         if epsilon > FINAL_EPSILON and self._timestep > OBSERVE:
             self._epsilon.assign_sub((INITIAL_EPSILON - FINAL_EPSILON) / EXPLORE).op.run()
-
         return action
 
     def _create_q_network(self):
@@ -205,9 +206,19 @@ class BrainDQN:
             else:
                 y_batch.append(reward_batch[i] + GAMMA * np.max(qvalue_batch[i]))
 
-        self._train_step.run(feed_dict={self._y_input : y_batch,
-                                      self._action_input : action_batch,
-                                      self._stateinput : state_batch})
+        if self._timestep == OBSERVE+1:
+            run_metadata = tf.RunMetadata()
+            self._session.run(self._train_step,
+                              options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
+                              run_metadata=run_metadata,
+                              feed_dict={self._y_input : y_batch,
+                                         self._action_input : action_batch,
+                                         self._stateinput : state_batch})
+            self._summarywriter.add_run_metadata(run_metadata, 'step_%d' % self._timestep)
+        else:
+            self._train_step.run(feed_dict={self._y_input : y_batch,
+                                            self._action_input : action_batch,
+                                            self._stateinput : state_batch})
 
         # calculate loss function (we do it via proxy variable since summaries are run separatly)
         value = self._cost.eval(feed_dict={self._y_input : y_batch,
