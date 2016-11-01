@@ -15,7 +15,7 @@ def _preprocess(observation):
     return np.reshape(observation, (84, 84, 1))
 
 def _play_atari(args):
-    atari = Atari('breakout.bin')
+    atari = Atari(args.rom)
 
     action0 = np.array([1, 0, 0, 0])  # do nothing
     observation0, _, terminal = atari.next(action0)
@@ -32,12 +32,14 @@ def _play_atari(args):
         brain.set_perception(next_observation, action, reward, terminal)
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     data_basepath = 'data'
     parser.add_argument('-c', '--checkpoints', dest='checkpoints', default=os.path.join(data_basepath, 'checkpoints'),
                         help='Path where to store checkpoints (i.e partial training)')
     parser.add_argument('-s', '--summary', dest='summary', default=os.path.join(data_basepath, 'summary'),
                         help='Path where to store summary data (for tensorboard)')
+    parser.add_argument('-r', '--rom', dest='rom', default=os.path.join('game', 'roms', 'breakout.bin'),
+                        help='Filepath to the ROM (game) to use')
     args = parser.parse_args()
 
     _play_atari(args)
