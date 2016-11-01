@@ -33,8 +33,9 @@ class BrainDQN:
         self._prev_timestamp = time.clock()
         self._fps = tf.Variable(initial_value=0.0, dtype=tf.float32, name='frames_per_second')
         self._meta_state = tf.Variable(initial_value=0, dtype=tf.uint8, name='meta_state')  # (0-observe, 1-explore, 2-train)
-        self._epsilon = tf.Variable(initial_value=INITIAL_EPSILON, dtype=tf.float32, name='epsilon')
+        self._loss_function = tf.Variable(initial_value=0.0, dtype=tf.float32, name='loss')
 
+        self._epsilon = tf.Variable(initial_value=INITIAL_EPSILON, dtype=tf.float32, name='epsilon')
         self._actions = actions
 
         # init Q network
@@ -76,12 +77,17 @@ class BrainDQN:
                                                 self._w_fc_2_t.assign(self._w_fc_2),
                                                 self._b_fc_2_t.assign(self._b_fc2)]
 
-        self._create_training_method()
+        self._action_input = tf.placeholder("float", [None, self._actions])
+        self._y_input = tf.placeholder("float", [None])
+        q_action = tf.reduce_sum(tf.mul(self._qvalue, self._action_input), reduction_indices=1)
+        self._cost = tf.reduce_mean(tf.square(self._y_input - q_action), name='loss_function')
+        self._train_step = tf.train.RMSPropOptimizer(0.00025, 0.99, 0.0, 1e-6).minimize(self._cost)
 
         self._session = tf.InteractiveSession()
 
         if summarypath is not None:
             tf.scalar_summary(r'overview/meta_state (0-observe, 1-explore, 2-train)', self._meta_state)
+            tf.scalar_summary(r'overview/cost (loss function)', self._loss_function)
             tf.scalar_summary(r'overview/epsilon (exploration probability)', self._epsilon)
             tf.scalar_summary(r'performance/frames_per_second', self._fps)
             self._summaries = tf.merge_all_summaries()
@@ -181,24 +187,17 @@ class BrainDQN:
     def _copy_target_qnetwork(self):
         self._session.run(self._copy_target_qnetwork_operation)
 
-    def _create_training_method(self):
-        self.action_input = tf.placeholder("float", [None, self._actions])
-        self.y_input = tf.placeholder("float", [None])
-        q_action = tf.reduce_sum(tf.mul(self._qvalue, self.action_input), reduction_indices=1)
-        self.cost = tf.reduce_mean(tf.square(self.y_input - q_action))
-        self.train_step = tf.train.RMSPropOptimizer(0.00025, 0.99, 0.0, 1e-6).minimize(self.cost)
-
     def _train_qnetwork(self):
         # Step 1: obtain random minibatch from replay memory
         minibatch = random.sample(self._replay_memory, BATCH_SIZE)
         state_batch = [data[0] for data in minibatch]
         action_batch = [data[1] for data in minibatch]
         reward_batch = [data[2] for data in minibatch]
-        nextState_batch = [data[3] for data in minibatch]
+        next_state_batch = [data[3] for data in minibatch]
 
         # Step 2: calculate y
         y_batch = []
-        qvalue_batch = self._qvalue_t.eval(feed_dict={self._stateinput_t:nextState_batch})
+        qvalue_batch = self._qvalue_t.eval(feed_dict={self._stateinput_t:next_state_batch})
         for i in range(0, BATCH_SIZE):
             terminal = minibatch[i][4]
             if terminal:
@@ -206,9 +205,15 @@ class BrainDQN:
             else:
                 y_batch.append(reward_batch[i] + GAMMA * np.max(qvalue_batch[i]))
 
-        self.train_step.run(feed_dict={self.y_input : y_batch,
-                                      self.action_input : action_batch,
+        self._train_step.run(feed_dict={self._y_input : y_batch,
+                                      self._action_input : action_batch,
                                       self._stateinput : state_batch})
+
+        # calculate loss function (we do it via proxy variable since summaries are run separatly)
+        value = self._cost.eval(feed_dict={self._y_input : y_batch,
+                                           self._action_input : action_batch,
+                                           self._stateinput : state_batch})
+        self._loss_function.assign(value).op.run()
 
         # save network every 100000 iteration
         if self._timestep % 100000 == 0:

@@ -1,7 +1,7 @@
+import os
 from ale_python_interface import ALEInterface
 import numpy as np
 import cv2
-from random import randrange
 
 class Atari:
     def __init__(self, rom_name):
@@ -16,9 +16,9 @@ class Atari:
         for i in range(len(self.legal_actions)):
             self.action_map[self.legal_actions[i]] = i
         # print len(self.legal_actions)
-        self.windowname = rom_name
+        self.windowname = os.path.basename(rom_name)
         cv2.startWindowThread()
-        cv2.namedWindow(rom_name)
+        cv2.namedWindow(self.windowname)
 
     def get_image(self):
         numpy_surface = np.zeros(self.screen_height * self.screen_width * 3, dtype=np.uint8)
