@@ -149,39 +149,39 @@ class BrainDQN:
         return action
 
     def _create_q_network(self):
-        # network weights
-        w_conv1 = self._weight_variable([8, 8, 4, 32])
-        b_conv1 = self._bias_variable([32])
-
-        w_conv2 = self._weight_variable([4, 4, 32, 64])
-        b_conv2 = self._bias_variable([64])
-
-        w_conv3 = self._weight_variable([3, 3, 64, 64])
-        b_conv3 = self._bias_variable([64])
-
-        w_fc1 = self._weight_variable([3136, 512])
-        b_fc1 = self._bias_variable([512])
-
-        w_fc2 = self._weight_variable([512, self._actions])
-        b_fc2 = self._bias_variable([self._actions])
-
-        # input layer
-        stateinput = tf.placeholder("float", [None, 84, 84, 4])
+        with tf.name_scope('input_layer'):
+            stateinput = tf.placeholder("float", [None, 84, 84, 4], name='stateinput')
 
         # hidden layers
-        h_conv1 = tf.nn.relu(self._conv2d(stateinput, w_conv1, 4) + b_conv1)
-        # h_pool1 = self._max_pool_2x2(h_conv1)
+        with tf.name_scope('conv1'):
+            w_conv1 = self._weight_variable([8, 8, 4, 32], name='conv1_weights')
+            b_conv1 = self._bias_variable([32], name='conv1_bias')
+            h_conv1 = tf.nn.relu(self._conv2d(stateinput, w_conv1, 4) + b_conv1, name='conv1_relu')
+            # h_pool1 = self._max_pool_2x2(h_conv1)
+        with tf.name_scope('conv2'):
+            w_conv2 = self._weight_variable([4, 4, 32, 64], name='conv2_weights')
+            b_conv2 = self._bias_variable([64], name='conv2_bias')
+            h_conv2 = tf.nn.relu(self._conv2d(h_conv1, w_conv2, 2) + b_conv2, name='conv2_relu')
 
-        h_conv2 = tf.nn.relu(self._conv2d(h_conv1, w_conv2, 2) + b_conv2)
+        with tf.name_scope('conv3'):
+            w_conv3 = self._weight_variable([3, 3, 64, 64], name='conv3_weights')
+            b_conv3 = self._bias_variable([64], name='conv3_bias')
+            h_conv3 = tf.nn.relu(self._conv2d(h_conv2, w_conv3, 1) + b_conv3, name='conv3_relu')
+            # h_conv3_shape = h_conv3.get_shape().as_list()
+            # print "dimension:", h_conv3_shape[1] * h_conv3_shape[2] * h_conv3_shape[3]
+            h_conv3_flat = tf.reshape(h_conv3, [-1, 3136], name='conv3_flatten')
 
-        h_conv3 = tf.nn.relu(self._conv2d(h_conv2, w_conv3, 1) + b_conv3)
-        h_conv3_shape = h_conv3.get_shape().as_list()
-        print "dimension:", h_conv3_shape[1] * h_conv3_shape[2] * h_conv3_shape[3]
-        h_conv3_flat = tf.reshape(h_conv3, [-1, 3136])
-        h_fc1 = tf.nn.relu(tf.matmul(h_conv3_flat, w_fc1) + b_fc1)
+        with tf.name_scope('fc1'):
+            w_fc1 = self._weight_variable([3136, 512], name='fc1_weights')
+            b_fc1 = self._bias_variable([512], name='fc1_bias')
+            h_fc1 = tf.nn.relu(tf.matmul(h_conv3_flat, w_fc1) + b_fc1, name='fc1_relu')
 
-        # Q Value layer
-        qvalue = tf.matmul(h_fc1, w_fc2) + b_fc2
+        with tf.name_scope('fc2'):
+            w_fc2 = self._weight_variable([512, self._actions], name='fc2_weights')
+            b_fc2 = self._bias_variable([self._actions], name='fc2_bias')
+
+        with tf.name_scope('q-value'):
+            qvalue = tf.matmul(h_fc1, w_fc2) + b_fc2
 
         return stateinput, qvalue, w_conv1, b_conv1, w_conv2, b_conv2, w_conv3, b_conv3, w_fc1, b_fc1, w_fc2, b_fc2
 
@@ -206,7 +206,7 @@ class BrainDQN:
             else:
                 y_batch.append(reward_batch[i] + GAMMA * np.max(qvalue_batch[i]))
 
-        if self._timestep == OBSERVE+1:
+        if self._timestep == OBSERVE + 1:
             run_metadata = tf.RunMetadata()
             self._session.run(self._train_step,
                               options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
@@ -252,13 +252,13 @@ class BrainDQN:
         summary = self._session.run(self._summaries)
         self._summarywriter.add_summary(summary, self._timestep)
 
-    def _weight_variable(self, shape):
+    def _weight_variable(self, shape, name):
         initial = tf.truncated_normal(shape, stddev=0.01)
-        return tf.Variable(initial)
+        return tf.Variable(initial, name=name)
 
-    def _bias_variable(self, shape):
+    def _bias_variable(self, shape, name):
         initial = tf.constant(0.01, shape=shape)
-        return tf.Variable(initial)
+        return tf.Variable(initial, name=name)
 
     def _conv2d(self, x, W, stride):
         return tf.nn.conv2d(x, W, strides=[1, stride, stride, 1], padding="VALID")
