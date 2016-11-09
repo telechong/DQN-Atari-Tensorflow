@@ -18,7 +18,7 @@ class Atari:
         # print len(self.legal_actions)
         self.windowname = os.path.basename(rom_name)
         cv2.startWindowThread()
-        cv2.namedWindow(self.windowname)
+        cv2.namedWindow(self.windowname, cv2.WINDOW_NORMAL)
 
     def get_image(self):
         numpy_surface = np.zeros(self.screen_height * self.screen_width * 3, dtype=np.uint8)
